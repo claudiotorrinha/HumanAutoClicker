@@ -30,8 +30,8 @@ class AutoClicker(threading.Thread):
         self.app = app
         self.interval = interval
         self.random_interval = random_interval
-        self.click_type = click_type
-        self.button = Button.left if button == 'left' else Button.right
+        self.click_type = click_type.lower()
+        self.button = Button.left if button.lower() == 'left' else Button.right
         self.click_limit = click_limit
         self.position = position
         self.random_pos_offset = random_pos_offset
@@ -554,8 +554,8 @@ class App(ctk.CTk):
                 
                 # Restore Card States
                 if not config.get("card_main_expanded", True): self.card_main.toggle()
-                if config.get("card_pos_expanded", False): self.card_pos.toggle()
-                if config.get("card_adv_expanded", False): self.card_adv.toggle()
+                if not config.get("card_pos_expanded", True): self.card_pos.toggle()
+                if not config.get("card_adv_expanded", True): self.card_adv.toggle()
 
                 self.toggle_repeat_entry()
                 self.toggle_pos_inputs()
