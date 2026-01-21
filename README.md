@@ -2,6 +2,10 @@
 
 A professional-grade, modern autoclicker built with Python and CustomTkinter, designed to simulate natural human behavior.
 
+## ⚠️ Disclaimer
+**This software is provided for educational purposes only.**
+The author is not responsible for how you use this application or any consequences that may arise from its use (e.g., bans in games or services). Use it responsibly and at your own risk.
+
 ## Features
 
 ### 🖱️ Human-like Clicking
