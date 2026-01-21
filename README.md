@@ -1,6 +1,12 @@
-# HumanAutoClicker v1.0
+# HumanAutoClicker v1.1
 
 A professional-grade, modern autoclicker built with Python and CustomTkinter, designed to simulate natural human behavior.
+
+## Material Design 3.0 UI (v1.1)
+- **Responsive / Dynamic Sizing**: The window now automatically adjusts its height based on which setting cards are expanded. No more dead space or scrollbars.
+- **Card-Based Interface**: Settings are grouped into sleek, rounded "cards" (General, Positioning, Advanced) that follow modern design principles.
+- **Segmented Controls**: Replaced radio buttons with modern segmented toggle bars for click types.
+- **Clean Aesthetic**: Improved spacing, fonts, and colors for a premium feel.
 
 ## ⚠️ Disclaimer
 **This software is provided for educational purposes only.**
@@ -26,6 +32,7 @@ The author is not responsible for how you use this application or any consequenc
 ### 🎨 Personalization
 - **Theme Switching**: Toggle between **Dark Mode** and **Light Mode**.
 - **Real-time Autosave**: Configuration is saved automatically as you change settings.
+- **State Persistence**: The app remembers which cards were open/closed.
 
 ## Global Hotkeys
 - **F6**: Start / Stop Clicking

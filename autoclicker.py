@@ -7,12 +7,19 @@ import os
 import math
 import customtkinter as ctk
 from tkinter import messagebox
+from PIL import Image
 from pynput.mouse import Button, Controller
 from pynput.keyboard import Listener, Key
 
-# Configuration for aesthetic
+# Configuration for aesthetic - Material 3 inspired colors
 ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
+ctk.set_default_color_theme("blue") # We will override specific colors
+
+# Font Configuration
+FONT_HEADER = ("Segoe UI", 20, "bold")
+FONT_TITLE = ("Segoe UI", 14, "bold")
+FONT_BODY = ("Segoe UI", 12)
+FONT_SMALL = ("Segoe UI", 10)
 
 class AutoClicker(threading.Thread):
     def __init__(self, interval, random_interval, click_type, button, 
@@ -33,7 +40,6 @@ class AutoClicker(threading.Thread):
         self.program_running = True
         self.click_count = 0
         
-        # Human-like drift state
         self.drift_x = 0
         self.drift_y = 0
 
@@ -55,13 +61,11 @@ class AutoClicker(threading.Thread):
             while self.running:
                 target_x, target_y = 0, 0
                 
-                # 1. Determine Base Position
                 if self.position:
                     target_x, target_y = self.position
                 else:
                     target_x, target_y = self.mouse.position
 
-                # 2. Calculate Final Position with Offset
                 final_x, final_y = target_x, target_y
                 
                 if self.random_pos_offset:
@@ -70,16 +74,13 @@ class AutoClicker(threading.Thread):
                     
                     if range_x > 0 or range_y > 0:
                         if self.human_like:
-                            # Human Drift Logic
                             drift_step_x = random.uniform(-1.5, 0.5) 
                             drift_step_y = random.uniform(-1.5, 0.5)
                             
                             self.drift_x += drift_step_x
                             self.drift_y += drift_step_y
                             
-                            # Check boundaries
                             if (abs(self.drift_x) > range_x) or (abs(self.drift_y) > range_y):
-                                # Reset close to center
                                 self.drift_x = random.uniform(-2, 2)
                                 self.drift_y = random.uniform(-2, 2)
                             
@@ -87,17 +88,14 @@ class AutoClicker(threading.Thread):
                             final_y += int(self.drift_y)
                             
                         else:
-                            # Standard Random Logic
                             x_offset = random.randint(-range_x, range_x) if range_x > 0 else 0
                             y_offset = random.randint(-range_y, range_y) if range_y > 0 else 0
                             final_x += x_offset
                             final_y += y_offset
 
-                # Apply Position
                 if self.position or (self.random_pos_offset and (self.random_pos_offset[0] > 0 or self.random_pos_offset[1] > 0)):
                      self.mouse.position = (final_x, final_y)
 
-                # Perform the click
                 if self.click_type == 'double':
                     self.mouse.click(self.button, 2)
                 else: 
@@ -119,148 +117,222 @@ class AutoClicker(threading.Thread):
             
             time.sleep(0.1) 
 
+class CollapsibleCard(ctk.CTkFrame):
+    def __init__(self, master, title="", expanded=True, **kwargs):
+        super().__init__(master, fg_color=("gray95", "gray20"), corner_radius=12, **kwargs) # Material Card Style
+        self.columnconfigure(0, weight=1)
+        self.expanded = expanded
+        
+        # Header (Clickable)
+        self.title_frame = ctk.CTkFrame(self, fg_color="transparent", height=40)
+        self.title_frame.pack(fill="x", expand=True, padx=5, pady=2)
+        self.title_frame.bind("<Button-1>", self.toggle)
+        
+        self.toggle_label = ctk.CTkLabel(self.title_frame, text="▼" if expanded else "▶", width=20, font=FONT_TITLE)
+        self.toggle_label.pack(side="left", padx=(10, 5))
+        self.toggle_label.bind("<Button-1>", self.toggle)
+        
+        self.label = ctk.CTkLabel(self.title_frame, text=title, font=FONT_TITLE)
+        self.label.pack(side="left", padx=5)
+        self.label.bind("<Button-1>", self.toggle)
+
+        # Content Area
+        self.content_frame = ctk.CTkFrame(self, fg_color="transparent")
+        if expanded:
+             self.content_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+
+    def toggle(self, event=None):
+        if not self.expanded:
+            self.content_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+            self.toggle_label.configure(text="▼")
+            self.expanded = True
+        else:
+            self.content_frame.forget()
+            self.toggle_label.configure(text="▶")
+            self.expanded = False
+        
+        # Trigger parent resize if possible
+        if self.master:
+             try:
+                 self.master.update_idletasks()
+                 # Try to resize window if needed, specifically for the App
+                 if hasattr(self.winfo_toplevel(), 'adjust_size'):
+                     self.winfo_toplevel().adjust_size()
+             except:
+                 pass
+
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("HumanAutoClicker v1.0")
-        self.geometry("500x800")
-        self.resizable(False, False)
+        self.title("HumanAutoClicker v1.1")
+        # Set Application Icon
+        try:
+             self.iconbitmap("app_icon.ico")
+        except:
+             pass # Fail quietly if icon not found during dev
 
         self.click_thread = None
         self.hotkey_listener = None
         self.save_timer = None
         
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(6, weight=1)
+        
+        # Main Container
+        self.main_container = ctk.CTkFrame(self, fg_color="transparent")
+        self.main_container.pack(fill="both", expand=True, padx=10, pady=10)
 
-        self.create_widgets()
+        self.create_header()
+        self.create_cards()
+        self.create_controls()
+
         self.setup_hotkey_listener()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         
         self.load_config()
         self.status_updater()
-
-    def create_widgets(self):
-        # Header
-        self.header_frame = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
-        self.header_frame.grid(row=0, column=0, sticky="ew", pady=(20, 10))
-        ctk.CTkLabel(self.header_frame, text="HumanAutoClicker", font=ctk.CTkFont(size=24, weight="bold")).pack()
-        ctk.CTkLabel(self.header_frame, text="Advanced Automation Tool", font=ctk.CTkFont(size=12)).pack()
-
-        # 1. Click Interval
-        self.interval_frame = ctk.CTkFrame(self)
-        self.interval_frame.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
-        self.interval_frame.grid_columnconfigure((1, 3), weight=1)
         
-        ctk.CTkLabel(self.interval_frame, text="Click Interval", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, columnspan=4, pady=5, sticky="w", padx=10)
+        # Initial resize
+        self.after(100, self.adjust_size)
+
+    def adjust_size(self):
+        self.update_idletasks()
+        req_height = self.main_container.winfo_reqheight() + 40 # Padding
+        # Limit max height just in case, but let it grow
+        self.geometry(f"400x{req_height}")
+
+    def create_header(self):
+        self.header_frame = ctk.CTkFrame(self.main_container, fg_color="transparent", height=50)
+        self.header_frame.pack(fill="x", pady=(0, 10))
         
-        ctk.CTkLabel(self.interval_frame, text="Seconds (e.g. 0.01):").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        # Logo + Text
+        try:
+            # Load and resize logo
+            logo_img = ctk.CTkImage(light_image=Image.open("app_icon.png"),
+                                    dark_image=Image.open("app_icon.png"),
+                                    size=(40, 40))
+            self.logo_label = ctk.CTkLabel(self.header_frame, text="", image=logo_img)
+            self.logo_label.pack(side="left", padx=(10, 10))
+        except Exception as e:
+            print(f"Logo not found: {e}")
+
+        ctk.CTkLabel(self.header_frame, text="HumanAutoClicker", font=FONT_HEADER).pack(side="left", anchor="center")
+
+    def create_cards(self):
+        # Card 1: Click Settings
+        self.card_main = CollapsibleCard(self.main_container, title="Click Settings", expanded=True)
+        self.card_main.pack(fill="x", pady=5)
+        
+        # Interval Row
+        int_row = ctk.CTkFrame(self.card_main.content_frame, fg_color="transparent")
+        int_row.pack(fill="x", pady=5)
+        
+        ctk.CTkLabel(int_row, text="Interval (s)", font=FONT_BODY).pack(side="left")
         self.interval_var = ctk.StringVar(value="0.1")
-        self.interval_entry = ctk.CTkEntry(self.interval_frame, width=80, textvariable=self.interval_var)
-        self.interval_entry.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
-
-        ctk.CTkLabel(self.interval_frame, text="Random ± (s):").grid(row=1, column=2, padx=10, pady=5, sticky="w")
+        self.interval_entry = ctk.CTkEntry(int_row, width=60, textvariable=self.interval_var)
+        self.interval_entry.pack(side="right") # Right aligned
+        
+        # Random Row
+        rand_row = ctk.CTkFrame(self.card_main.content_frame, fg_color="transparent")
+        rand_row.pack(fill="x", pady=5)
+        ctk.CTkLabel(rand_row, text="Randomness (±s)", font=FONT_BODY).pack(side="left")
         self.random_interval_var = ctk.StringVar(value="0.0")
-        self.random_interval_entry = ctk.CTkEntry(self.interval_frame, width=80, textvariable=self.random_interval_var)
-        self.random_interval_entry.grid(row=1, column=3, padx=5, pady=5, sticky="ew")
-
-        # 2. Click Options
-        self.options_frame = ctk.CTkFrame(self)
-        self.options_frame.grid(row=2, column=0, padx=20, pady=10, sticky="ew")
-        self.options_frame.grid_columnconfigure((1, 3), weight=1)
-
-        ctk.CTkLabel(self.options_frame, text="Click Options", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, columnspan=4, pady=5, sticky="w", padx=10)
-
-        ctk.CTkLabel(self.options_frame, text="Mouse Button:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        self.random_interval_entry = ctk.CTkEntry(rand_row, width=60, textvariable=self.random_interval_var)
+        self.random_interval_entry.pack(side="right")
+        
+        # Type & Button - Using Segmented Buttons which fit Material Design better
+        type_row = ctk.CTkFrame(self.card_main.content_frame, fg_color="transparent")
+        type_row.pack(fill="x", pady=10)
+        
         self.button_var = ctk.StringVar(value="left")
-        ctk.CTkRadioButton(self.options_frame, text="Left", variable=self.button_var, value="left", command=self.trigger_save).grid(row=1, column=1, padx=5, pady=5, sticky="w")
-        ctk.CTkRadioButton(self.options_frame, text="Right", variable=self.button_var, value="right", command=self.trigger_save).grid(row=1, column=2, padx=5, pady=5, sticky="w")
-
-        ctk.CTkLabel(self.options_frame, text="Click Type:").grid(row=2, column=0, padx=10, pady=5, sticky="w")
+        self.lr_seg = ctk.CTkSegmentedButton(type_row, values=["Left", "Right"], variable=self.button_var, command=self.trigger_save)
+        self.lr_seg.pack(fill="x", pady=(0,5))
+        
         self.click_type_var = ctk.StringVar(value="single")
-        ctk.CTkRadioButton(self.options_frame, text="Single", variable=self.click_type_var, value="single", command=self.trigger_save).grid(row=2, column=1, padx=5, pady=5, sticky="w")
-        ctk.CTkRadioButton(self.options_frame, text="Double", variable=self.click_type_var, value="double", command=self.trigger_save).grid(row=2, column=2, padx=5, pady=5, sticky="w")
-        
-        ctk.CTkLabel(self.options_frame, text="Repeat:").grid(row=3, column=0, padx=10, pady=5, sticky="w")
-        self.repeat_mode_var = ctk.StringVar(value="infinite")
-        self.repeat_infinite_rb = ctk.CTkRadioButton(self.options_frame, text="Until Stopped", variable=self.repeat_mode_var, value="infinite", command=self.toggle_repeat_entry)
-        self.repeat_infinite_rb.grid(row=3, column=1, padx=5, pady=5, sticky="w")
-        
-        self.repeat_limit_rb = ctk.CTkRadioButton(self.options_frame, text="Times:", variable=self.repeat_mode_var, value="limit", command=self.toggle_repeat_entry)
-        self.repeat_limit_rb.grid(row=3, column=2, padx=5, pady=5, sticky="w")
-        
-        self.repeat_limit_var = ctk.StringVar(value="100")
-        self.repeat_entry = ctk.CTkEntry(self.options_frame, width=60, textvariable=self.repeat_limit_var)
-        self.repeat_entry.grid(row=3, column=3, padx=5, pady=5, sticky="w")
+        self.sd_seg = ctk.CTkSegmentedButton(type_row, values=["Single", "Double"], variable=self.click_type_var, command=self.trigger_save)
+        self.sd_seg.pack(fill="x")
 
-        # 3. Position Settings
-        self.pos_frame = ctk.CTkFrame(self)
-        self.pos_frame.grid(row=3, column=0, padx=20, pady=10, sticky="ew")
+        # Card 2: Positioning (Default Open)
+        self.card_pos = CollapsibleCard(self.main_container, title="Positioning", expanded=True)
+        self.card_pos.pack(fill="x", pady=5)
         
-        ctk.CTkLabel(self.pos_frame, text="Position Settings", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, columnspan=4, pady=5, sticky="w", padx=10)
-
         self.current_pos_var = ctk.BooleanVar(value=True)
-        self.pos_checkbox = ctk.CTkCheckBox(self.pos_frame, text="Click at current mouse position", variable=self.current_pos_var, command=self.toggle_pos_inputs)
-        self.pos_checkbox.grid(row=1, column=0, columnspan=4, padx=10, pady=5, sticky="w")
-
-        self.pick_pos_btn = ctk.CTkButton(self.pos_frame, text="Pick Location (F8)", command=self.pick_location_mode, width=120)
-        self.pick_pos_btn.grid(row=2, column=0, padx=10, pady=5, sticky="w")
+        self.pos_switch = ctk.CTkSwitch(self.card_pos.content_frame, text="At Cursor Location", variable=self.current_pos_var, command=self.toggle_pos_inputs, font=FONT_BODY)
+        self.pos_switch.pack(anchor="w", pady=5)
         
-        self.pos_x_var = ctk.StringVar()
+        # Inputs Row
+        pos_input_frame = ctk.CTkFrame(self.card_pos.content_frame, fg_color="transparent")
+        pos_input_frame.pack(fill="x", pady=5)
+        
+        self.pick_pos_btn = ctk.CTkButton(pos_input_frame, text="Pick (F8)", command=self.pick_location_mode, width=80, height=28, font=FONT_BODY)
+        self.pick_pos_btn.pack(side="left")
+        
         self.pos_y_var = ctk.StringVar()
-        self.pos_x_entry = ctk.CTkEntry(self.pos_frame, width=60, placeholder_text="X", textvariable=self.pos_x_var)
-        self.pos_x_entry.grid(row=2, column=1, padx=5, pady=5)
-        self.pos_y_entry = ctk.CTkEntry(self.pos_frame, width=60, placeholder_text="Y", textvariable=self.pos_y_var)
-        self.pos_y_entry.grid(row=2, column=2, padx=5, pady=5)
+        ctk.CTkEntry(pos_input_frame, width=50, placeholder_text="Y", textvariable=self.pos_y_var).pack(side="right", padx=2)
+        self.pos_x_var = ctk.StringVar()
+        ctk.CTkEntry(pos_input_frame, width=50, placeholder_text="X", textvariable=self.pos_x_var).pack(side="right", padx=2)
 
-        ctk.CTkLabel(self.pos_frame, text="Spread (Radius):").grid(row=3, column=0, padx=10, pady=5, sticky="w")
-        self.offset_x_var = ctk.StringVar(value="0")
-        self.offset_y_var = ctk.StringVar(value="0")
-        self.offset_x_entry = ctk.CTkEntry(self.pos_frame, width=60, textvariable=self.offset_x_var)
-        self.offset_x_entry.grid(row=3, column=1, padx=5, pady=5)
-        self.offset_y_entry = ctk.CTkEntry(self.pos_frame, width=60, textvariable=self.offset_y_var)
-        self.offset_y_entry.grid(row=3, column=2, padx=5, pady=5)
+        # Spread
+        spread_frame = ctk.CTkFrame(self.card_pos.content_frame, fg_color="transparent")
+        spread_frame.pack(fill="x", pady=5)
+        ctk.CTkLabel(spread_frame, text="Spread (±px)", font=FONT_BODY).pack(side="left")
         
-        # Human Like
+        self.offset_y_var = ctk.StringVar(value="0")
+        ctk.CTkEntry(spread_frame, width=50, textvariable=self.offset_y_var).pack(side="right", padx=2)
+        self.offset_x_var = ctk.StringVar(value="0")
+        ctk.CTkEntry(spread_frame, width=50, textvariable=self.offset_x_var).pack(side="right", padx=2)
+        
         self.human_like_var = ctk.BooleanVar(value=False)
-        self.human_like_chk = ctk.CTkSwitch(self.pos_frame, text="Human-like Drift", variable=self.human_like_var, command=self.trigger_save)
-        self.human_like_chk.grid(row=4, column=0, columnspan=4, padx=10, pady=(10, 5), sticky="w")
+        ctk.CTkSwitch(self.card_pos.content_frame, text="Human-like Drift", variable=self.human_like_var, command=self.trigger_save, font=FONT_BODY).pack(anchor="w", pady=10)
 
-        # 4. App Settings
-        self.settings_frame = ctk.CTkFrame(self)
-        self.settings_frame.grid(row=4, column=0, padx=20, pady=10, sticky="ew")
+        # Card 3: Advanced (Default Open)
+        self.card_adv = CollapsibleCard(self.main_container, title="Advanced", expanded=True)
+        self.card_adv.pack(fill="x", pady=5)
+        
+        # Repeat
+        rep_frame = ctk.CTkFrame(self.card_adv.content_frame, fg_color="transparent")
+        rep_frame.pack(fill="x", pady=5)
+        ctk.CTkLabel(rep_frame, text="Repeat limit:", font=FONT_BODY).pack(side="left")
+        
+        self.repeat_mode_var = ctk.StringVar(value="infinite")
+        self.repeat_limit_var = ctk.StringVar(value="100")
+        
+        # We'll use a switch logic for "Infinite" vs "Finite"
+        self.repeat_switch = ctk.CTkSwitch(rep_frame, text="Infinite", command=self.toggle_repeat_switch, onvalue="infinite", offvalue="limit", variable=self.repeat_mode_var)
+        self.repeat_switch.pack(side="right")
+        
+        self.repeat_entry = ctk.CTkEntry(self.card_adv.content_frame, placeholder_text="Count", textvariable=self.repeat_limit_var)
+        self.repeat_entry.pack(fill="x", pady=5)
+
+        ctk.CTkLabel(self.card_adv.content_frame, text="Application", font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(10,5))
         
         self.always_on_top_var = ctk.BooleanVar(value=False)
-        self.always_on_top_check = ctk.CTkSwitch(self.settings_frame, text="Always on Top", variable=self.always_on_top_var, command=self.toggle_always_on_top)
-        self.always_on_top_check.pack(side="left", padx=20, pady=10)
-
+        ctk.CTkSwitch(self.card_adv.content_frame, text="Always on Top", variable=self.always_on_top_var, command=self.toggle_always_on_top, font=FONT_BODY).pack(anchor="w", pady=5)
+        
         self.theme_var = ctk.StringVar(value="Dark")
-        self.theme_switch = ctk.CTkSwitch(self.settings_frame, text="Light Mode", onvalue="Light", offvalue="Dark", variable=self.theme_var, command=self.toggle_theme)
-        self.theme_switch.pack(side="right", padx=20, pady=10)
+        ctk.CTkSwitch(self.card_adv.content_frame, text="Light Mode", onvalue="Light", offvalue="Dark", variable=self.theme_var, command=self.toggle_theme, font=FONT_BODY).pack(anchor="w", pady=5)
 
-        self.toggle_pos_inputs()
-        self.toggle_repeat_entry()
 
-        # 5. Global Hotkeys Info & Control
-        self.control_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.control_frame.grid(row=5, column=0, padx=20, pady=10, sticky="ew")
+    def create_controls(self):
+        self.control_frame = ctk.CTkFrame(self.main_container, fg_color="transparent")
+        self.control_frame.pack(fill="x", pady=10)
         
-        self.start_btn = ctk.CTkButton(self.control_frame, text="START (F6)", command=self.start_clicking, fg_color="green", hover_color="darkgreen", height=40)
-        self.start_btn.pack(side="left", expand=True, padx=5)
+        # Floating Action Button Style (Large, Round)
+        self.start_btn = ctk.CTkButton(self.control_frame, text="START (F6)", command=self.start_clicking, 
+                                       fg_color="#4CAF50", hover_color="#45a049", 
+                                       height=50, corner_radius=25, font=("Segoe UI", 16, "bold"))
+        self.start_btn.pack(side="left", expand=True, fill="x", padx=5)
         
-        self.stop_btn = ctk.CTkButton(self.control_frame, text="STOP (F6)", command=self.stop_clicking_ui, fg_color="red", hover_color="darkred", state="disabled", height=40)
-        self.stop_btn.pack(side="right", expand=True, padx=5)
-
-        # Status Bar
-        self.status_var = ctk.StringVar(value="Ready. Press F6 to Start/Stop.")
-        self.status_bar = ctk.CTkLabel(self, textvariable=self.status_var, height=30, fg_color=("gray85", "gray20"))
-        self.status_bar.grid(row=6, column=0, sticky="ew", padx=0, pady=0)
+        self.stop_btn = ctk.CTkButton(self.control_frame, text="STOP", command=self.stop_clicking_ui, 
+                                      fg_color="#f44336", hover_color="#d32f2f", 
+                                      state="disabled", height=50, corner_radius=25, font=("Segoe UI", 16, "bold"))
+        self.stop_btn.pack(side="right", expand=True, fill="x", padx=5)
         
-        self.bind_autosave()
+        self.status_var = ctk.StringVar(value="Ready")
+        self.status_bar = ctk.CTkLabel(self.main_container, textvariable=self.status_var, font=FONT_SMALL, text_color="gray")
+        self.status_bar.pack(pady=0)
 
     def bind_autosave(self):
-        # Bind KeyRelease events to Entries
         for entry in [self.interval_entry, self.random_interval_entry, self.repeat_entry, 
                       self.pos_x_entry, self.pos_y_entry, self.offset_x_entry, self.offset_y_entry]:
             try:
@@ -282,25 +354,27 @@ class App(ctk.CTk):
         self.trigger_save()
 
     def toggle_pos_inputs(self):
-        if self.current_pos_var.get():
-            self.pos_x_entry.configure(state="disabled")
-            self.pos_y_entry.configure(state="disabled")
-            self.pick_pos_btn.configure(state="disabled")
-        else:
-            self.pos_x_entry.configure(state="normal")
-            self.pos_y_entry.configure(state="normal")
-            self.pick_pos_btn.configure(state="normal")
+        state = "disabled" if self.current_pos_var.get() else "normal"
+        self.pick_pos_btn.configure(state=state)
+        self.pos_x_entry.configure(state=state)
+        self.pos_y_entry.configure(state=state)
+        self.trigger_save()
+
+    def toggle_repeat_switch(self):
+        self.toggle_repeat_entry()
         self.trigger_save()
 
     def toggle_repeat_entry(self):
+        # If infinite, disable entry
         if self.repeat_mode_var.get() == "infinite":
             self.repeat_entry.configure(state="disabled")
         else:
             self.repeat_entry.configure(state="normal")
+        self.adjust_size() # Input might change layout slightly? No, but good practice.
         self.trigger_save()
-
+        
     def pick_location_mode(self):
-        self.status_var.set("PICK MODE: Move mouse and press F8 to set position.")
+        self.status_var.set("PICK MODE: Move mouse and press F8")
         self.update()
 
     def setup_hotkey_listener(self):
@@ -397,11 +471,11 @@ class App(ctk.CTk):
             self.click_thread.stop_clicking()
         self.start_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
-        self.status_var.set("Stopped.")
+        self.status_var.set("Stopped")
 
     def update_status(self):
         if self.is_clicking():
-            msg = f"RUNNING... Clicks: {self.click_thread.click_count}"
+            msg = f"RUNNING... {self.click_thread.click_count}"
             if self.click_thread.click_limit > 0:
                 msg += f" / {self.click_thread.click_limit}"
             self.status_var.set(msg)
@@ -439,7 +513,11 @@ class App(ctk.CTk):
             "offset_y": self.offset_y_var.get(),
             "always_on_top": self.always_on_top_var.get(),
             "theme": self.theme_var.get(),
-            "human_like": self.human_like_var.get()
+            "human_like": self.human_like_var.get(),
+            # Save Card States
+            "card_main_expanded": self.card_main.expanded,
+            "card_pos_expanded": self.card_pos.expanded,
+            "card_adv_expanded": self.card_adv.expanded
         }
         try:
             with open(self.get_config_path(), 'w') as f:
@@ -467,15 +545,21 @@ class App(ctk.CTk):
                 
                 self.always_on_top_var.set(config.get("always_on_top", False))
                 self.attributes('-topmost', self.always_on_top_var.get())
-
+                
                 loaded_theme = config.get("theme", "Dark")
                 self.theme_var.set(loaded_theme)
                 ctk.set_appearance_mode(loaded_theme)
                 
                 self.human_like_var.set(config.get("human_like", False))
+                
+                # Restore Card States
+                if not config.get("card_main_expanded", True): self.card_main.toggle()
+                if config.get("card_pos_expanded", False): self.card_pos.toggle()
+                if config.get("card_adv_expanded", False): self.card_adv.toggle()
 
                 self.toggle_repeat_entry()
                 self.toggle_pos_inputs()
+                self.adjust_size()
 
         except Exception as e:
             print(f"Failed to load config: {e}")
