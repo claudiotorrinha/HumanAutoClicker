@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 
 import time
 import random
@@ -565,5 +566,11 @@ class App(ctk.CTk):
             print(f"Failed to load config: {e}")
 
 if __name__ == '__main__':
+=======
+from autoclicker.ui import App
+
+
+if __name__ == "__main__":
+>>>>>>> feature/refactor
     app = App()
     app.mainloop()
