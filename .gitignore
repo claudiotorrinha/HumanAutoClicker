@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / Build
+build/
+dist/
+*.spec
+
+# Configuration
+autoclicker_config.json
+
+# Environment
+.env
+.venv
+env/
+venv/
