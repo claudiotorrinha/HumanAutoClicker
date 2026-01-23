@@ -2,6 +2,7 @@ import time
 import random
 import threading
 import math
+import sys
 from pynput.mouse import Button, Controller
 
 MS_PER_SEC = 1000
@@ -38,6 +39,93 @@ DRIFT_STEP_MIN = DEFAULT_DRIFT_STEP_MIN
 DRIFT_STEP_MAX = DEFAULT_DRIFT_STEP_MAX
 DRIFT_RESET_MIN = DEFAULT_DRIFT_RESET_MIN
 DRIFT_RESET_MAX = DEFAULT_DRIFT_RESET_MAX
+
+IS_WINDOWS = sys.platform.startswith("win")
+
+WM_LBUTTONDOWN = 0x0201
+WM_LBUTTONUP = 0x0202
+WM_RBUTTONDOWN = 0x0204
+WM_RBUTTONUP = 0x0205
+MK_LBUTTON = 0x0001
+MK_RBUTTON = 0x0002
+
+if IS_WINDOWS:
+    import ctypes
+    from ctypes import wintypes
+
+    _user32 = ctypes.WinDLL("user32", use_last_error=True)
+
+    class POINT(ctypes.Structure):
+        _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
+
+    _user32.GetForegroundWindow.restype = wintypes.HWND
+    _user32.WindowFromPoint.argtypes = [POINT]
+    _user32.WindowFromPoint.restype = wintypes.HWND
+    _user32.ScreenToClient.argtypes = [wintypes.HWND, ctypes.POINTER(POINT)]
+    _user32.ScreenToClient.restype = wintypes.BOOL
+    _user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    _user32.PostMessageW.restype = wintypes.BOOL
+    _user32.IsWindow.argtypes = [wintypes.HWND]
+    _user32.IsWindow.restype = wintypes.BOOL
+else:
+    _user32 = None
+
+
+def get_foreground_window_handle():
+    if not IS_WINDOWS:
+        return None
+    hwnd = _user32.GetForegroundWindow()
+    return hwnd or None
+
+
+def get_window_at_point(x, y):
+    if not IS_WINDOWS:
+        return None
+    pt = POINT(int(x), int(y))
+    hwnd = _user32.WindowFromPoint(pt)
+    return hwnd or None
+
+
+def _make_lparam(x, y):
+    x = max(0, int(x))
+    y = max(0, int(y))
+    return (y & 0xFFFF) << 16 | (x & 0xFFFF)
+
+
+if IS_WINDOWS:
+    class Win32BackgroundClicker:
+        def __init__(self, hwnd):
+            self.hwnd = hwnd
+
+        def is_valid(self):
+            return bool(self.hwnd) and bool(_user32.IsWindow(self.hwnd))
+
+        def _screen_to_client(self, x, y):
+            pt = POINT(int(x), int(y))
+            if not _user32.ScreenToClient(self.hwnd, ctypes.byref(pt)):
+                return None
+            return pt.x, pt.y
+
+        def _post(self, msg, wparam, x, y):
+            if not self.is_valid():
+                return False
+            client = self._screen_to_client(x, y)
+            if client is None:
+                return False
+            lparam = _make_lparam(*client)
+            return bool(_user32.PostMessageW(self.hwnd, msg, wparam, lparam))
+
+        def press(self, x, y, button):
+            if button == Button.left:
+                return self._post(WM_LBUTTONDOWN, MK_LBUTTON, x, y)
+            return self._post(WM_RBUTTONDOWN, MK_RBUTTON, x, y)
+
+        def release(self, x, y, button):
+            if button == Button.left:
+                return self._post(WM_LBUTTONUP, 0, x, y)
+            return self._post(WM_RBUTTONUP, 0, x, y)
+else:
+    Win32BackgroundClicker = None
 
 
 def ms_to_sec(ms):
@@ -88,12 +176,20 @@ class AutoClicker(threading.Thread):
                  time_provider=None,
                  sleep_fn=None,
                  mouse=None,
+                 background_click_enabled=False,
+                 background_click_handle=None,
+                 background_clicker=None,
                  app=None):
         super().__init__()
         self.rand = rand if rand else random
         self.now = time_provider if time_provider else time.perf_counter
         self.sleep = sleep_fn if sleep_fn else time.sleep
         self.mouse = mouse if mouse else Controller()
+        self.background_click_enabled = background_click_enabled
+        self.background_click_handle = background_click_handle
+        self.background_clicker = background_clicker
+        if self.background_click_enabled and self.background_clicker is None and Win32BackgroundClicker:
+            self.background_clicker = Win32BackgroundClicker(self.background_click_handle)
         self.app = app
         self.interval_ms = interval_ms
         self.random_interval_ms = random_interval_ms
@@ -161,9 +257,46 @@ class AutoClicker(threading.Thread):
     def _sample_hold_time(self):
         return ms_to_sec(self._sample_positive_gauss_ms(self.hold_time_mean_ms, self.hold_time_std_ms))
 
+    def _use_background_clicker(self):
+        if not self.background_click_enabled or not self.background_clicker:
+            return False
+        is_valid = getattr(self.background_clicker, "is_valid", None)
+        return is_valid() if callable(is_valid) else True
+
+    def _press_button(self, button, x, y):
+        if self.background_click_enabled:
+            if self._use_background_clicker():
+                self.background_clicker.press(x, y, button)
+            return
+        self.mouse.press(button)
+
+    def _release_button(self, button, x, y):
+        if self.background_click_enabled:
+            if self._use_background_clicker():
+                self.background_clicker.release(x, y, button)
+            return
+        self.mouse.release(button)
+
+    def _click_button(self, button, x, y, count):
+        if self.background_click_enabled:
+            if not self._use_background_clicker():
+                return
+            for i in range(count):
+                self.background_clicker.press(x, y, button)
+                self.background_clicker.release(x, y, button)
+                if count == 2 and i == 0:
+                    self.sleep(ms_to_sec(DOUBLE_CLICK_GAP_MIN_MS))
+            return
+        self.mouse.click(button, count)
+
     def run(self):
         while self.program_running:
             while self.running:
+                if self.background_click_enabled and not self._use_background_clicker():
+                    self.stop_clicking()
+                    if self.app:
+                        self.app.after(0, self.app.stop_clicking_ui)
+                    break
                 if self.human_like and self.fatigue_enabled:
                     now = self.now()
                     if self.last_action_time is not None:
@@ -202,19 +335,20 @@ class AutoClicker(threading.Thread):
                             final_y += self.rand.randint(-range_y, range_y) if range_y > 0 else 0
 
                 if self.target_pos or (self.random_pos_offset and (self.random_pos_offset[0] > 0 or self.random_pos_offset[1] > 0)):
-                    self.mouse.position = (final_x, final_y)
+                    if not self._use_background_clicker():
+                        self.mouse.position = (final_x, final_y)
 
                 click_count = 2 if current_click_type.lower() == "double" else 1
 
                 if self.human_like and self.hold_time_enabled:
                     for i in range(click_count):
-                        self.mouse.press(current_button)
+                        self._press_button(current_button, final_x, final_y)
                         self.sleep(self._sample_hold_time())
-                        self.mouse.release(current_button)
+                        self._release_button(current_button, final_x, final_y)
                         if click_count == 2 and i == 0:
                             self.sleep(ms_to_sec(self.rand.uniform(DOUBLE_CLICK_GAP_MIN_MS, DOUBLE_CLICK_GAP_MAX_MS)))
                 else:
-                    self.mouse.click(current_button, click_count)
+                    self._click_button(current_button, final_x, final_y, click_count)
 
                 self.click_count += click_count
 
