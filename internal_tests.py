@@ -33,6 +33,24 @@ class FakeMouse:
         self.release_count += count
 
 
+class FakeBackgroundClicker:
+    def __init__(self):
+        self.press_calls = 0
+        self.release_calls = 0
+        self.coords = []
+
+    def is_valid(self):
+        return True
+
+    def press(self, x, y, button):
+        self.press_calls += 1
+        self.coords.append((x, y))
+
+    def release(self, x, y, button):
+        self.release_calls += 1
+        self.coords.append((x, y))
+
+
 class FastHoldClicker(AutoClicker):
     def _sample_hold_time(self):
         return ms_to_sec(1)
@@ -223,12 +241,30 @@ def test_drift_toggle():
         raise AssertionError("Drift disabled: expected no uniform calls")
 
 
+def test_background_clicker_usage():
+    fake_bg = FakeBackgroundClicker()
+    clicker, _ = build_clicker(
+        max_clicks=3,
+        human_like=False,
+        hold_time_enabled=False,
+        background_click_enabled=True,
+        background_clicker=fake_bg,
+        target_pos=(100, 100),
+    )
+    run_clicker(clicker)
+    if fake_bg.press_calls == 0 or fake_bg.release_calls == 0:
+        raise AssertionError("Background clicker: expected press/release calls")
+    if clicker.mouse.press_count != 0 or clicker.mouse.release_count != 0 or clicker.mouse.click_calls != 0:
+        raise AssertionError("Background clicker: expected no mouse interactions")
+
+
 def run_all_tests():
     tests = [
         test_thinking_pause_toggle,
         test_fatigue_toggle,
         test_hold_time_toggle,
         test_drift_toggle,
+        test_background_clicker_usage,
     ]
     for test in tests:
         test()

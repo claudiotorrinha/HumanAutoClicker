@@ -31,6 +31,8 @@ from .core import (
     DEFAULT_FATIGUE_DURATION_MS,
     DEFAULT_FATIGUE_COOLDOWN_DURATION_MS,
     DEFAULT_FATIGUE_COOLDOWN_MIN_INTERVAL_MS,
+    get_foreground_window_handle,
+    get_window_at_point,
     coerce_bool,
     safe_int,
 )
@@ -146,7 +148,7 @@ class App(tk.Tk):
         self.info_icon_images = {}
 
         self.init_theme()
-        self.apply_theme("light")
+        self.apply_theme("dark")
 
         self.title("HumanAutoClicker v1.2")
         self.minsize(ui(MIN_WINDOW_WIDTH), ui(MIN_WINDOW_HEIGHT))
@@ -168,6 +170,7 @@ class App(tk.Tk):
         self.hotkey_start_var = tk.StringVar(value="F6")
         self.hotkey_pick_var = tk.StringVar(value="F8")
         self.hold_to_click_var = tk.BooleanVar(value=False)
+        self.background_click_var = tk.BooleanVar(value=False)
         self.hk_hint_var = tk.StringVar()
 
         self.hotkey_start_var.trace_add("write", self.update_hk_labels)
@@ -461,7 +464,7 @@ class App(tk.Tk):
             self.random_interval_var,
             help_text="Adds a random amount (0 to value) to each interval.",
         )
-        self.timing_model_var = tk.StringVar(value="Uniform")
+        self.timing_model_var = tk.StringVar(value="Exponential")
         self.timing_model_combo = self.add_labeled_combo(
             timing_section,
             2,
@@ -499,7 +502,7 @@ class App(tk.Tk):
         )
 
         location_section = self.create_section(position_tab, "Location", 0)
-        self.current_pos_var = tk.BooleanVar(value=True)
+        self.current_pos_var = tk.BooleanVar(value=False)
         self.pos_switch = ttk.Checkbutton(
             location_section,
             text="At Cursor Location",
@@ -521,12 +524,12 @@ class App(tk.Tk):
         self.pick_pos_btn.grid(row=0, column=0, sticky="w")
 
         ttk.Label(pos_input_frame, text="X", font=FONT_BODY).grid(row=0, column=1, sticky="e", padx=(ui(6), ui(2)))
-        self.pos_x_var = tk.StringVar()
+        self.pos_x_var = tk.StringVar(value="500")
         self.pos_x_entry = ttk.Entry(pos_input_frame, width=6, textvariable=self.pos_x_var)
         self.pos_x_entry.grid(row=0, column=2, sticky="e")
 
         ttk.Label(pos_input_frame, text="Y", font=FONT_BODY).grid(row=0, column=3, sticky="e", padx=(ui(6), ui(2)))
-        self.pos_y_var = tk.StringVar()
+        self.pos_y_var = tk.StringVar(value="500")
         self.pos_y_entry = ttk.Entry(pos_input_frame, width=6, textvariable=self.pos_y_var)
         self.pos_y_entry.grid(row=0, column=4, sticky="e")
 
@@ -534,11 +537,11 @@ class App(tk.Tk):
         spread_frame = self.make_row(spread_section, 0)
         ttk.Label(spread_frame, text="Spread (+/- px)", font=FONT_BODY).grid(row=0, column=0, sticky="w")
         ttk.Label(spread_frame, text="X", font=FONT_BODY).grid(row=0, column=1, sticky="e", padx=(ui(6), ui(2)))
-        self.offset_x_var = tk.StringVar(value="0")
+        self.offset_x_var = tk.StringVar(value="15")
         self.offset_x_entry = ttk.Entry(spread_frame, width=6, textvariable=self.offset_x_var)
         self.offset_x_entry.grid(row=0, column=2, sticky="e")
         ttk.Label(spread_frame, text="Y", font=FONT_BODY).grid(row=0, column=3, sticky="e", padx=(ui(6), ui(2)))
-        self.offset_y_var = tk.StringVar(value="0")
+        self.offset_y_var = tk.StringVar(value="15")
         self.offset_y_entry = ttk.Entry(spread_frame, width=6, textvariable=self.offset_y_var)
         self.offset_y_entry.grid(row=0, column=4, sticky="e")
         spread_help = self.add_info_icon(
@@ -590,7 +593,24 @@ class App(tk.Tk):
         )
         self.pick_hk_btn.grid(row=0, column=1, sticky="e")
 
-        app_section = self.create_section(behavior_tab, "App", 2)
+        background_section = self.create_section(behavior_tab, "Background Clicking", 2)
+        bg_row = ttk.Frame(background_section)
+        bg_row.grid(row=0, column=0, sticky="ew", pady=ui(2))
+        bg_row.columnconfigure(0, weight=1)
+        self.background_click_switch = ttk.Checkbutton(
+            bg_row,
+            text="Enable Background Clicks",
+            variable=self.background_click_var,
+            style=self.switch_style,
+        )
+        self.background_click_switch.grid(row=0, column=0, sticky="w")
+        bg_help = self.add_info_icon(
+            bg_row,
+            "Captures the window under the target position when you press Start; the cursor won't move.",
+        )
+        bg_help.grid(row=0, column=1, sticky="e", padx=(ui(6), 0))
+
+        app_section = self.create_section(behavior_tab, "App", 3)
         hold_row = ttk.Frame(app_section)
         hold_row.grid(row=0, column=0, sticky="ew", pady=ui(2))
         hold_row.columnconfigure(0, weight=1)
@@ -607,7 +627,7 @@ class App(tk.Tk):
         )
         hold_help.grid(row=0, column=1, sticky="e", padx=(ui(6), 0))
 
-        self.always_on_top_var = tk.BooleanVar(value=False)
+        self.always_on_top_var = tk.BooleanVar(value=True)
         self.always_on_top_switch = ttk.Checkbutton(
             app_section,
             text="Always on Top",
@@ -617,7 +637,7 @@ class App(tk.Tk):
         )
         self.always_on_top_switch.grid(row=1, column=0, sticky="w", pady=ui(2))
 
-        self.theme_var = tk.StringVar(value="Light")
+        self.theme_var = tk.StringVar(value="Dark")
         self.theme_switch = ttk.Checkbutton(
             app_section,
             text="Light Mode",
@@ -633,7 +653,7 @@ class App(tk.Tk):
         human_row = ttk.Frame(human_section)
         human_row.grid(row=0, column=0, sticky="ew", pady=ui(2))
         human_row.columnconfigure(0, weight=1)
-        self.human_like_var = tk.BooleanVar(value=False)
+        self.human_like_var = tk.BooleanVar(value=True)
         self.human_like_switch = ttk.Checkbutton(
             human_row,
             text="Enable Humanized Behavior",
@@ -1045,6 +1065,21 @@ class App(tk.Tk):
             except ValueError:
                 pass
 
+            background_click_enabled = coerce_bool(self.background_click_var.get())
+            background_click_handle = None
+            if background_click_enabled:
+                if target_pos is None:
+                    mouse_controller = getattr(self, "mouse_controller", None) or Controller()
+                    target_pos = mouse_controller.position
+                target_x, target_y = target_pos
+                background_click_handle = get_window_at_point(target_x, target_y) or get_foreground_window_handle()
+                if not background_click_handle:
+                    messagebox.showerror(
+                        "Error",
+                        "Unable to detect a target window. Bring the target app to the front and try again.",
+                    )
+                    return
+
             human_enabled = coerce_bool(self.human_like_var.get())
             hold_time_enabled = human_enabled and coerce_bool(self.hold_time_enabled_var.get())
             hold_time_mean_ms = DEFAULT_HOLD_TIME_MEAN_MS
@@ -1122,6 +1157,8 @@ class App(tk.Tk):
                 fatigue_duration_ms=fatigue_duration_ms,
                 fatigue_cooldown_duration_ms=fatigue_cooldown_duration_ms,
                 fatigue_cooldown_min_interval_ms=fatigue_cooldown_min_interval_ms,
+                background_click_enabled=background_click_enabled,
+                background_click_handle=background_click_handle,
                 app=self
             )
 
@@ -1201,6 +1238,7 @@ class App(tk.Tk):
             "fatigue_duration_ms": safe_int(self.fatigue_duration_var.get(), DEFAULT_FATIGUE_DURATION_MS),
             "fatigue_cooldown_duration_ms": safe_int(self.fatigue_cooldown_duration_var.get(), DEFAULT_FATIGUE_COOLDOWN_DURATION_MS),
             "fatigue_cooldown_min_interval_ms": safe_int(self.fatigue_cooldown_min_interval_var.get(), DEFAULT_FATIGUE_COOLDOWN_MIN_INTERVAL_MS),
+            "background_click_enabled": self.background_click_var.get(),
             "hotkey_start": self.hotkey_start_var.get(),
             "hotkey_pick": self.hotkey_pick_var.get(),
             "hold_to_click": self.hold_to_click_var.get()
@@ -1234,9 +1272,9 @@ class App(tk.Tk):
                         random_interval_ms = DEFAULT_RANDOM_INTERVAL_MS
             random_interval_ms = safe_int(random_interval_ms, DEFAULT_RANDOM_INTERVAL_MS)
             self.random_interval_var.set(str(random_interval_ms))
-            timing_model = config.get("timing_model", "Uniform")
+            timing_model = config.get("timing_model", "Exponential")
             if timing_model not in ("Uniform", "Exponential"):
-                timing_model = "Uniform"
+                timing_model = "Exponential"
             self.timing_model_var.set(timing_model)
             exp_mean_interval_ms = config.get("exp_mean_interval_ms")
             if exp_mean_interval_ms is None:
@@ -1265,20 +1303,20 @@ class App(tk.Tk):
             self.click_type_var.set(click_type_val)
             self.repeat_mode_var.set(config.get("repeat_mode", "infinite"))
             self.repeat_limit_var.set(str(safe_int(config.get("repeat_limit"), 100)))
-            self.current_pos_var.set(coerce_bool(config.get("use_current_pos", True)))
-            self.pos_x_var.set(config.get("pos_x", ""))
-            self.pos_y_var.set(config.get("pos_y", ""))
-            self.offset_x_var.set(str(safe_int(config.get("offset_x"), 0)))
-            self.offset_y_var.set(str(safe_int(config.get("offset_y"), 0)))
+            self.current_pos_var.set(coerce_bool(config.get("use_current_pos", False)))
+            self.pos_x_var.set(config.get("pos_x", "500"))
+            self.pos_y_var.set(config.get("pos_y", "500"))
+            self.offset_x_var.set(str(safe_int(config.get("offset_x"), 15)))
+            self.offset_y_var.set(str(safe_int(config.get("offset_y"), 15)))
 
-            self.always_on_top_var.set(coerce_bool(config.get("always_on_top", False)))
+            self.always_on_top_var.set(coerce_bool(config.get("always_on_top", True)))
             self.attributes("-topmost", self.always_on_top_var.get())
 
-            loaded_theme = config.get("theme", "Light")
+            loaded_theme = config.get("theme", "Dark")
             self.theme_var.set(loaded_theme)
             self.apply_theme(loaded_theme)
 
-            self.human_like_var.set(coerce_bool(config.get("human_like", False)))
+            self.human_like_var.set(coerce_bool(config.get("human_like", True)))
             self.hold_time_enabled_var.set(coerce_bool(config.get("hold_time_enabled", DEFAULT_HOLD_TIME_ENABLED)))
             self.hold_time_mean_var.set(str(safe_int(config.get("hold_time_mean_ms"), DEFAULT_HOLD_TIME_MEAN_MS)))
             self.hold_time_std_var.set(str(safe_int(config.get("hold_time_std_ms"), DEFAULT_HOLD_TIME_STD_MS)))
@@ -1300,6 +1338,7 @@ class App(tk.Tk):
             self.fatigue_duration_var.set(str(safe_int(config.get("fatigue_duration_ms"), DEFAULT_FATIGUE_DURATION_MS)))
             self.fatigue_cooldown_duration_var.set(str(safe_int(config.get("fatigue_cooldown_duration_ms"), DEFAULT_FATIGUE_COOLDOWN_DURATION_MS)))
             self.fatigue_cooldown_min_interval_var.set(str(safe_int(config.get("fatigue_cooldown_min_interval_ms"), DEFAULT_FATIGUE_COOLDOWN_MIN_INTERVAL_MS)))
+            self.background_click_var.set(coerce_bool(config.get("background_click_enabled", False)))
             self.hotkey_start_var.set(config.get("hotkey_start", "F6"))
             self.hotkey_pick_var.set(config.get("hotkey_pick", "F8"))
             self.hold_to_click_var.set(coerce_bool(config.get("hold_to_click", False)))
