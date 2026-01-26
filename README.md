@@ -19,8 +19,8 @@ The author is not responsible for how you use this application or any consequenc
 ### 🖱️ Human-like Clicking
 - **Drift & Correction**: Simulates natural hand recoil. The mouse drifts slightly and corrects itself, mimicking imperfect human aim.
 - **Flexible Timing**: Set click intervals with randomized offsets (all in ms).
-- **Thinking Pauses**: Toggleable Gaussian pauses (default mean 4000ms, std 1500ms, every 10-20 clicks).
-- **Fatigue Modeling**: Toggleable jitter detection and cooldown (default 100ms threshold, 3000ms duration, 15000ms cooldown, 500ms min interval).
+- **Thinking Pauses**: Toggleable Gaussian pauses (default mean 1500ms, std 800ms, every 120-150 clicks).
+- **Fatigue Modeling**: Toggleable jitter detection and cooldown (default 100ms threshold, 3000ms duration, 1000ms cooldown, 500ms min interval).
 - **Millisecond Inputs**: Uses whole-millisecond values (e.g., `1` ms).
 
 ### 🎯 Positioning Control
